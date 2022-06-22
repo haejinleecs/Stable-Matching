@@ -1,0 +1,148 @@
+
+/*
+Haejin Lee
+Stable Matching
+*/
+
+// generates a randome integer value between min and max
+function randomInt(min, max) {
+    return Math.floor(Math.random() * (max - min)) + min;
+}
+// returns a random number x between 0 and max-1 that isn't already in arr
+function getRandom(arr, max){ 
+  let x = 0;
+  do{
+    x = randomInt(0, max);
+  } while (arr.indexOf(x) !== -1)
+  return x;
+}
+
+// creates an n by n array of unique random number arrays between 0 and n-1
+function generateInput(n) {
+  let arr = [];
+  for (let i = 0; i < n; ++i){
+    let subArr = [];
+    for (let j = 0; j < n; ++j){
+        subArr.push(getRandom(subArr,n));
+      }
+      arr.push(subArr);
+    }
+    return arr;
+  }
+
+/*
+runOracle takes in a function that has an input of companies and candidates that returns a Run, and tests that the stable matching algorithm is correctly traced
+type Run = { trace: Offer[], out: Hire[] }
+type Offer = { from: number, to: number, fromCo: boolean }
+runOracle(f: (companies: number[][], candidates: number[][]) => Run): void
+*/
+function runOracle(f){
+  
+  let numTests = 10; // Change this to some reasonably large value
+  for (let i = 0; i < numTests; ++i) {
+    let n = 6; // Change this to some reasonable size
+    let companies = generateInput(n);
+    let candidates = generateInput(n);
+    let run = f(companies, candidates);
+    let offers = run.trace;
+    let hires = run.out;
+    /*
+    1) the offer sequence in the trace is valid, made according to the given algorithm, starting with
+    all parties unmatched. The trace need not be a complete algorithm run, it may stop at any point.
+    
+    Algorithm:
+      - At any step, any unmatched company or candidate may propose
+      - Every party always proposes to the next potential partner on their preference list, starting with the top choice
+      - Proposals are not repeated
+      - Any unmatched party that receives a proposal accepts unconditionally
+      - If the receiving party is already matched, but they receive a better offer (higher in their preference list), they accept, and their current 
+      partner becomes unmatched; otherwise, the offer is rejected. 
+      - The algorithm ends when all parties are either matched or have made offers to the entire preference list
+      - The algorithm is underspecified/nondeterministic: it doesn’t state whether a company or a candidate proposes at
+    a given step, nor which one does, as long as the given rules are observed.*/
+
+    let matchedCo = [];
+    let matchedCa = [];
+    let propCo = []; // stores last proposals of company #index, or -1
+    let propCa = []; // stores last proposal of candidate #index, or -1
+    for (let i = 0; i < hires.length; ++i){ // initialize matchedCo and matchedCa to -1
+      matchedCo.push(-1);
+      matchedCa.push(-1);
+      propCo.push([]);
+      propCa.push([]);
+    }
+    test('Trace is valid', function(){
+      let validProp = true; // valid proposal
+
+      offers.forEach(function(o) {
+
+        if (o.fromCo) { // if offer is from company
+          validProp = match(o.from, o.to, matchedCo, matchedCa, companies[o.from], candidates[o.to], propCo[o.from]);} // match process
+     
+        else { // if offer is from candidate
+          validProp = match(o.from, o.to, matchedCa, matchedCo, candidates[o.from], companies[o.to], propCa[o.from]);} // match process
+        
+        console.log(matchedCo);
+        console.log(matchedCa);
+      });
+      assert(validProp);
+    });
+    /*
+    2) the produced matching (out) is indeed the result of the offers in the trace
+    */
+    test('Matching is the result of the offers', function(){
+      let success = true;
+      console.log(hires);
+      console.log(matchedCo);
+      console.log(matchedCa);
+      console.log('Priorities');
+      console.log(companies);
+      console.log(candidates);
+      for (let i = 0; i < hires.length; ++i){
+        if (matchedCo[hires[i].company] !== hires[i].candidate){ success = false;}
+      }
+      assert(success);
+    });
+    test('No duplicates matched', function(){
+    let companies = [];
+    let candidates = [];
+    let duplicate = false;
+    hires.forEach(function(o){
+      if (companies.indexOf(o.company) !== -1 || candidates.indexOf(o.candidate) !== -1) {
+        duplicate = true;
+      }
+      companies.push(o.company);
+      candidates.push(o.candidate);
+    });
+    assert(!duplicate);
+  });
+  
+  }
+  function match(f, t, from, to, f_priority, t_priority, prevProp) {
+    let valid = true;
+    if (prevProp.some(x => x === t) || from[f] !== -1 || to.indexOf(f) !== -1) { return false;} // check that we don't have duplicate proposals
+    if (prevProp.length === 0) { // check offer's very first offer is to its top choice
+      if (f_priority[0] !== t){
+        return false;}
+    }
+    else { 
+      if (f_priority.indexOf(prevProp[prevProp.length-1]) !== f_priority.indexOf(t)-1){  // check offerer is proposing to the next priority
+      return false;} // valid is false
+    }
+    if (to[t] === -1) { // if receiver is unmatched
+      from[f] = t; // offerer is matched to receiver
+      to[t] = f; // receiver is matched to offerer
+    }
+    else if (t_priority.indexOf(f) < t_priority.indexOf(to[t])){ // if receiver is matched but prefers new offer
+      from[to[t]] = -1; // old partner of receiver is no longer matched to anyone
+      from[f] = t; // offerer is matched to receiver
+      to[t] = f; // receiver is matched to offerer
+    }
+    prevProp.push(t); // store proposal after match process
+    return valid;
+  }
+
+}
+const oracleLib = require('oracle');
+runOracle(oracleLib.traceWheat1);
+// runOracle(oracleLib.traceChaff1);
